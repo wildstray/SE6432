@@ -146,7 +146,6 @@ SE6432::SE6432(volatile uint8_t *port, const uint8_t g1, const uint8_t g2, const
   _lt = 1 << (latch & 7);
   _ck = 1 << (clock & 7);
   _en = 1 << (enable & 7);
- // _abcd = abcd;
   _abcd = 0x0f << (abcd & 7);
   _a = 1 << (abcd & 7);
   _prow = prow;
@@ -162,7 +161,6 @@ SE6432::SE6432(volatile uint8_t *port, const uint8_t g1, const uint8_t g2, const
   _port++;
   _prow--;
   *_prow |= _abcd;
-//  *_prow |= (0x0f << (_abcd & 7));
   _prow++;
 #endif
   _setup();
@@ -198,7 +196,7 @@ inline void SE6432::_reset(_port_t port)
 #endif
 }
 
-inline void SE6432::_set(uint8_t val)
+inline void SE6432::_set(register uint8_t val)
 {
 #ifdef USE_ASM
   asm (
@@ -214,7 +212,7 @@ inline void SE6432::_set(uint8_t val)
 #endif
 }
 
-inline void SE6432::_toggle(uint8_t val)
+inline void SE6432::_toggle(register uint8_t val)
 {
 #ifdef USE_ASM
   asm (
@@ -230,7 +228,7 @@ inline void SE6432::_toggle(uint8_t val)
 #endif
 }
 
-inline void SE6432::_reset(uint8_t val)
+inline void SE6432::_reset(register uint8_t val)
 {
 #ifdef USE_ASM
   asm (
@@ -265,34 +263,6 @@ void SE6432::_pulse(uint8_t num, uint8_t val)
   }
 }
 
-void SE6432::_writebits (uint8_t bits, uint8_t msb)
-{
-/*
-  do {
-    (bits & msb) ? _set(_data) : _reset(_data);
-    _reset(_wr);
-    _set(_wr);
-  } while (msb >>= 1);
-*/
-}
-
-void SE6432::_chipselect(uint8_t cs)
-{
-/*
-  _reset(_cs);
-  if (cs == HT1632_CS_ALL) {
-    _pulse(HT1632_CS_ALL, _clk);
-  } else if (cs == HT1632_CS_NONE) {
-    _set(_cs);
-    _pulse(HT1632_CS_ALL, _clk);
-  } else {
-    _pulse(1, _clk);
-    _set(_cs);
-    _pulse(cs - 1, _clk);
-  }
-*/
-}
-
 /* SE6432s based display initialization  */
 
 void SE6432::_setup()
@@ -307,17 +277,6 @@ void SE6432::_setup()
   y_cur = 0;
 }
 
-/* set the display brightness */ 
-
-void SE6432::pwm(uint8_t value)
-{
-  noInterrupts();
-/*
-  _sendcmd(HT1632_CS_ALL, HT1632_CMD_PWM | value);
-*/
-  interrupts();
-}
-
 /* select row */ 
 
 inline void SE6432::_setrow(register uint8_t row)
@@ -328,11 +287,9 @@ inline void SE6432::_setrow(register uint8_t row)
     "or      __tmp_reg__,  %1"  "\n"
     "eor     __tmp_reg__,  %1"  "\n"
     "st      %a0, __tmp_reg__"  "\n"
-    "push    %3              "  "\n"
     "mul     %3, %2          "  "\n"
     "or      __tmp_reg__,  %3"  "\n"
     "st      %a0, __tmp_reg__"  "\n"
-    "pop     %3              "  "\n"
     :
     : "e" (_prow), "r" (_abcd), "r" (_a), "r" (row)
     :
@@ -345,40 +302,110 @@ inline void SE6432::_setrow(register uint8_t row)
 
 /* write the framebuffer to the display - to be used after one or more textual or graphic functions */ 
 
-void SE6432::sendframe()
+void SE6432::sendframe() // 306 ASM 320 no ASM
 {
   noInterrupts();
   uint8_t addr = 0;
   for (uint8_t row = 0; row < 16; row++) {
-
     for (uint8_t i = 0; i < 8; i++) {
-      uint8_t vg1 = g_fb[addr];
-      uint8_t vg2 = g_fb[addr + 128];
-      uint8_t vr1 = r_fb[addr];
-      uint8_t vr2 = r_fb[addr + 128];
+      register uint8_t vg1 = g_fb[addr];
+      register uint8_t vg2 = g_fb[addr + 128];
+      register uint8_t vr1 = r_fb[addr];
+      register uint8_t vr2 = r_fb[addr + 128];
+#ifdef USE_ASM
+  register uint8_t tmp;
+  register uint8_t msb;
+  asm (
+    "ldi     %11, 128        "  "\n"
+    "bb:                     "  "\n"
+    "ld      __tmp_reg__, %a0"  "\n"
+
+    "or      __tmp_reg__,  %1"  "\n"
+    "eor     __tmp_reg__,  %1"  "\n"
+    "st      %a0, __tmp_reg__"  "\n"
+
+    "or      __tmp_reg__,  %2"  "\n"
+    "or      __tmp_reg__,  %3"  "\n"
+    "or      __tmp_reg__,  %4"  "\n"
+    "or      __tmp_reg__,  %5"  "\n"
+    "st      %a0, __tmp_reg__"  "\n"
+
+    "mov     %10, %6         "  "\n"
+    "and     %10, %11        "  "\n"
+    "breq    bg1             "  "\n"
+    "eor     __tmp_reg__,  %2"  "\n"
+    "bg1:                    "  "\n"
+    "mov     %10, %7         "  "\n"
+    "and     %10, %11        "  "\n"
+    "breq    bg2             "  "\n"
+    "eor     __tmp_reg__,  %3"  "\n"
+    "bg2:                    "  "\n"
+    "mov     %10, %8         "  "\n"
+    "and     %10, %11        "  "\n"
+    "breq    br1             "  "\n"
+    "eor     __tmp_reg__,  %4"  "\n"
+    "br1:                    "  "\n"
+    "mov     %10, %9         "  "\n"
+    "and     %10, %11        "  "\n"
+    "breq    br2             "  "\n"
+    "eor     __tmp_reg__,  %5"  "\n"
+    "br2:                    "  "\n"
+    "st      %a0, __tmp_reg__"  "\n"
+
+    "or      __tmp_reg__,  %1"  "\n"
+    "st      %a0, __tmp_reg__"  "\n"
+
+    "lsr     %11             "  "\n"
+    "brne    bb              "  "\n"
+
+    :
+    : "e" (_port), "r" (_ck), "r" (_g1), "r" (_g2), "r" (_r1), "r" (_r2) ,"r" (vg1), "r" (vg2), "r" (vr1), "r" (vr2), "r" (tmp), "r" (msb)
+    :
+  );
+#else
       uint8_t msb = 1 << 7;
       do {
+        _reset(_ck);
         _set(_g1|_g2|_r1|_r2);
         if (vg1 & msb) _reset(_g1);
         if (vg2 & msb) _reset(_g2);
         if (vr1 & msb) _reset(_r1);
         if (vr2 & msb) _reset(_r2);
-        _reset(_ck);
         _set(_ck);
       } while (msb >>= 1);
+#endif
       addr++;
     }
-
-    // disable display
-    // latch the data
-    _set(_lt|_en);
-    _reset(_lt);
 
     // set row
     _setrow(row);
 
+    // disable display
+    // latch the data
     // enable display
+#ifdef USE_ASM
+  asm (
+    "ld      __tmp_reg__, %a0"  "\n"
+    "or      __tmp_reg__,  %1"  "\n"
+    "or      __tmp_reg__,  %2"  "\n"
+    "st      %a0, __tmp_reg__"  "\n"
+    "eor     __tmp_reg__,  %2"  "\n"
+    "st      %a0, __tmp_reg__"  "\n"
+
+    "or      __tmp_reg__,  %1"  "\n"
+    "eor     __tmp_reg__,  %1"  "\n"
+    "st      %a0, __tmp_reg__"  "\n"
+
+    :
+    : "e" (_port), "r" (_en), "r" (_lt)
+    :
+  );
+#else
+    _set(_en);
+    _set(_lt|_en);
+    _reset(_lt);
     _reset(_en);
+#endif 
   }
   interrupts();
 }
@@ -831,15 +858,10 @@ void SE6432::bezier(int x0, int y0, int x1, int y1, int x2, int y2, uint8_t colo
 uint8_t SE6432::getpixel(uint8_t x, uint8_t y)
 {
   uint8_t g, r, val;
-  uint16_t addr, csm;
+  uint16_t addr;
 
-#ifdef USE_NLFB
-  addr = (x & 31) + ((x & ~31) << 1) + ((y & ~7) << 2);
-#else
-  csm = cs_max;
-  addr = x + csm * (y & ~7);
-#endif
-  val = 1 << (7 - y & 7);
+  val = 1 << (7 - _mod(x, 8));
+  addr = (y << 3) + (x >> 3);
   g = g_fb[addr];
   r = r_fb[addr];
   return ((g & val) ? GREEN : BLACK) | ((r & val) ? RED : BLACK);

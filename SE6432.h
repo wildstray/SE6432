@@ -154,15 +154,15 @@ private:
     void _setup();
     void _update_fb(uint8_t *ptr, uint8_t target, uint8_t pixel);
 
-    inline void _set(uint8_t val);
-    inline void _toggle(uint8_t val);
-    inline void _reset(uint8_t val);
-    inline void _pulse(uint8_t num, uint8_t val);
+    void _set(uint8_t val);
+    void _toggle(uint8_t val);
+    void _reset(uint8_t val);
+    void _pulse(uint8_t num, uint8_t val);
 
-    inline void _set(_port_t port);
-    inline void _toggle(_port_t port);
-    inline void _reset(_port_t port);
-    inline void _pulse(uint8_t num, _port_t port);
+    void _set(_port_t port);
+    void _toggle(_port_t port);
+    void _reset(_port_t port);
+    void _pulse(uint8_t num, _port_t port);
 
     void _writebits (uint8_t bits, uint8_t msb);
     void _chipselect(uint8_t cs);
